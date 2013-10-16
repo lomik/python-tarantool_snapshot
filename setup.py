@@ -64,11 +64,11 @@ module1 = Extension('tarantool_snapshot',
                     extra_link_args = extra_link_args)
 
 setup (name = 'Tarantool snapshot',
-       description = 'Tarantool snapshot reader',
-       version='1.0',
-       author='Lomonosov Roman',
-       author_email='r.lomonosov@gmail.com',
-       url='https://github.com/lomik/python-tarantool_snaphot',
-       packages=[],
-       ext_modules = [module1], **extra_params)
+    description = 'Tarantool snapshot reader',
+    version='1.0',
+    author='Lomonosov Roman',
+    author_email='r.lomonosov@gmail.com',
+    url='https://github.com/lomik/python-tarantool_snaphot',
+    packages=[],
+    ext_modules = [module1], **extra_params)
 

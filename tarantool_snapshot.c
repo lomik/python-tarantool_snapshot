@@ -91,6 +91,8 @@ static int SnapshotIterator_init(SnapshotIterator *self, PyObject *args) {
         self->open_exception = 1;
         return 1;
     }
+
+    tnt_iter_storage(&(self->iter), &(self->stream));
     
     return 0;
 }

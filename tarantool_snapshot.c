@@ -20,6 +20,7 @@ typedef struct {
     struct tnt_iter iter;
     struct tnt_iter iter_tuple;
     int open_exception;
+    int iter_created;
 } SnapshotIterator;
 
 static PyMethodDef SnapshotIterator_Methods[] = {
@@ -80,6 +81,7 @@ static int SnapshotIterator_init(SnapshotIterator *self, PyObject *args) {
     char *filename = NULL;
     //size_t len = 0;
     self->open_exception = 0;
+    self->iter_created = 0;
     
     if (!PyArg_ParseTuple(args, "s", &filename)) {
         return 1;
@@ -91,8 +93,16 @@ static int SnapshotIterator_init(SnapshotIterator *self, PyObject *args) {
         self->open_exception = 1;
         return 1;
     }
-    
+
     return 0;
+}
+
+void create_iterator_if_required(SnapshotIterator* self) {
+    if (self->iter_created) {
+        return;
+    }
+    tnt_iter_storage(&(self->iter), &(self->stream));
+    self->iter_created = 1;
 }
 
 PyObject* SnapshotIterator_iter(SnapshotIterator* self) {
@@ -100,12 +110,13 @@ PyObject* SnapshotIterator_iter(SnapshotIterator* self) {
         PyErr_Format(SnapshotError, "Can't open snapshot");
         return NULL;
     }
-    tnt_iter_storage(&(self->iter), &(self->stream));
+    create_iterator_if_required(self);
     Py_INCREF(self);
     return (PyObject*)self;
 }
 
 PyObject* SnapshotIterator_iternext(SnapshotIterator* self) {
+    create_iterator_if_required(self);
     if (tnt_next(&(self->iter))) {
         struct tnt_iter_storage *is = TNT_ISTORAGE(&(self->iter));
         struct tnt_stream_snapshot* ss = TNT_SSNAPSHOT_CAST(TNT_ISTORAGE_STREAM(&(self->iter)));
@@ -142,7 +153,9 @@ PyObject* SnapshotIterator_iternext(SnapshotIterator* self) {
 }
 
 PyObject* SnapshotIterator_del(SnapshotIterator* self) {
-    tnt_iter_free(&(self->iter));
+    if (self->iter_created) {
+        tnt_iter_free(&(self->iter));
+    }
     tnt_stream_free(&(self->stream));
     PyObject_Del(self);
     

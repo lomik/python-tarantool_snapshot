@@ -2,6 +2,10 @@
 
 [Tarantool](https://github.com/tarantool/tarantool) snapshot reader.
 
+FOR TARANTOOL 1.5
+
+Version for tarantool 1.6 and later: https://github.com/viciious/python-tarantool16_snaphot
+
 ## Usage
 
 ```python

@@ -7,10 +7,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <fcntl.h>
 
 #include <tarantool/tnt.h>
 #include <tarantool/tnt_net.h>
 #include <tarantool/tnt_snapshot.h>
+
+#define FADVD_WINDOW_SIZE ( 10 * 1024 * 1024 )
 
 static PyObject *SnapshotError;
 
@@ -19,6 +22,9 @@ typedef struct {
     struct tnt_stream stream;
     struct tnt_iter iter;
     struct tnt_iter iter_tuple;
+    FILE *fd;
+    int fileh;
+    off_t prevfadv;
     int open_exception;
     int iter_created;
 } SnapshotIterator;
@@ -82,7 +88,10 @@ static int SnapshotIterator_init(SnapshotIterator *self, PyObject *args) {
     //size_t len = 0;
     self->open_exception = 0;
     self->iter_created = 0;
-    
+    self->fd = NULL;
+    self->fileh = -1;
+    self->prevfadv = 0;
+
     if (!PyArg_ParseTuple(args, "s", &filename)) {
         return 1;
     }
@@ -93,6 +102,15 @@ static int SnapshotIterator_init(SnapshotIterator *self, PyObject *args) {
         self->open_exception = 1;
         return 1;
     }
+
+    // HACK HACK HACK
+    self->fd = TNT_SSNAPSHOT_CAST(&(self->stream))->log.fd;
+    if (!self->fd) {
+        self->open_exception = 1;
+        return 1;
+    }
+
+    self->fileh = fileno(self->fd);
 
     return 0;
 }
@@ -138,7 +156,15 @@ PyObject* SnapshotIterator_iternext(SnapshotIterator* self) {
             return NULL;
         }
         tnt_iter_free(&(self->iter_tuple));
-        
+
+#if ( _XOPEN_SOURCE >= 600 || _POSIX_C_SOURCE >= 200112L )
+        off_t curpos = ftell(self->fd);
+        if (curpos >= self->prevfadv + FADVD_WINDOW_SIZE) {
+            posix_fadvise(self->fileh, self->prevfadv, curpos, POSIX_FADV_DONTNEED);
+            self->prevfadv = curpos;
+        }
+#endif
+
         PyObject* tuple_as_tuple = PyList_AsTuple(tuple);
         PyObject* ret = Py_BuildValue("(I,O)", ss->log.current.row_snap.space, tuple_as_tuple);
         Py_DECREF(tuple_as_tuple);
@@ -153,6 +179,12 @@ PyObject* SnapshotIterator_iternext(SnapshotIterator* self) {
 }
 
 PyObject* SnapshotIterator_del(SnapshotIterator* self) {
+#if ( _XOPEN_SOURCE >= 600 || _POSIX_C_SOURCE >= 200112L )
+    if (self->fileh != -1) {
+        posix_fadvise(self->fileh, (off_t) 0, (off_t) 0, POSIX_FADV_DONTNEED);
+        self->fileh = -1;
+    }
+#endif
     if (self->iter_created) {
         tnt_iter_free(&(self->iter));
     }

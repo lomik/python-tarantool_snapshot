@@ -1,16 +1,16 @@
 import os
+import sys
+import platform
+
+if len(sys.argv) > 1 and sys.argv[1] == 'test':
+    import setuptools
+
+from distutils.core import setup, Extension
 
 BUILD_STATIC = True
 
 # for static build with tarantool sources
 TARANTOOL_REV = "3536b7002e5ba88d3cdd0ebfbf668762a89dc72c" # release 1.4.8
-
-try:
-    from setuptools import setup, Extension
-    extra_params = dict(test_suite = 'tests',)
-except ImportError:
-    from distutils.core import setup, Extension
-    extra_params = {}
 
 def sh(command):
     import subprocess
@@ -26,6 +26,7 @@ def download_tarantool_src():
     if not os.path.exists(src_dir):
         sh("git clone https://github.com/tarantool/tarantool.git %s" % src_dir)
         sh("cd %s && git checkout %s" % (src_dir, TARANTOOL_REV))
+        sh("rm -f %s/test/tarantool" % src_dir) # this broken file does not pass verification
 
     return src_dir
 
@@ -63,12 +64,20 @@ module1 = Extension('tarantool_snapshot',
                     sources = sources,
                     extra_link_args = extra_link_args)
 
-setup (name = 'Tarantool snapshot',
+if platform.python_implementation() == "PyPy":
+    interpreter = "pypy"
+else:
+    interpreter = "python"
+
+if sys.version_info.major == 3:
+    interpreter += "3"
+
+setup (name = '%s-tarantool-snapshot' % interpreter,
     description = 'Tarantool snapshot reader',
     version='1.0',
     author='Lomonosov Roman',
     author_email='r.lomonosov@gmail.com',
     url='https://github.com/lomik/python-tarantool_snaphot',
     packages=[],
-    ext_modules = [module1], **extra_params)
+    ext_modules = [module1])
 

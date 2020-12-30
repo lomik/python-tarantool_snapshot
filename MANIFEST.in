@@ -1,0 +1,2 @@
+include tarantool_src/third_party/crc32.h
+recursive-include tarantool_src/connector/c/include/tarantool *

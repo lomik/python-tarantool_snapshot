@@ -15,6 +15,10 @@
 
 #define FADVD_WINDOW_SIZE ( 10 * 1024 * 1024 )
 
+#if PY_MAJOR_VERSION >= 3
+#define Py_TPFLAGS_HAVE_ITER 0
+#endif
+
 static PyObject *SnapshotError;
 
 typedef struct {
@@ -39,8 +43,7 @@ PyObject* SnapshotIterator_iter(SnapshotIterator *self);
 PyObject* SnapshotIterator_iternext(SnapshotIterator *self);
 
 static PyTypeObject SnapshotIterator_Type = {
-    PyObject_HEAD_INIT(NULL)
-    0,                         /*ob_size*/
+    PyVarObject_HEAD_INIT(NULL, 0)
     "tarantool_snapshot.SnapshotIterator",      /*tp_name*/
     sizeof(SnapshotIterator),      /*tp_basicsize*/
     0,                         /*tp_itemsize*/
@@ -95,9 +98,9 @@ static int SnapshotIterator_init(SnapshotIterator *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "s", &filename)) {
         return 1;
     }
-    
+
     tnt_snapshot(&(self->stream));
-    
+
     if (tnt_snapshot_open(&(self->stream), filename) == -1) {
         self->open_exception = 1;
         return 1;
@@ -138,15 +141,15 @@ PyObject* SnapshotIterator_iternext(SnapshotIterator* self) {
     if (tnt_next(&(self->iter))) {
         struct tnt_iter_storage *is = TNT_ISTORAGE(&(self->iter));
         struct tnt_stream_snapshot* ss = TNT_SSNAPSHOT_CAST(TNT_ISTORAGE_STREAM(&(self->iter)));
-        
+
         PyObject *tuple = PyList_New(0);
         PyObject *s;
-        
+
         tnt_iter(&(self->iter_tuple), &is->t);
         while (tnt_next(&(self->iter_tuple))) {
             char *data = TNT_IFIELD_DATA(&(self->iter_tuple));
             uint32_t size = TNT_IFIELD_SIZE(&(self->iter_tuple));
-            s = PyString_FromStringAndSize(data, size);
+            s = PyBytes_FromStringAndSize(data, size);
             PyList_Append(tuple, s);
             Py_DECREF(s);
             //printf("size: %d\n", size);
@@ -190,13 +193,48 @@ PyObject* SnapshotIterator_del(SnapshotIterator* self) {
     }
     tnt_stream_free(&(self->stream));
     PyObject_Del(self);
-    
+
     Py_RETURN_NONE;
 }
 
 static PyMethodDef TarantoolSnapshot_Module_Methods[] = {
     {NULL}  /* Sentinel */
 };
+
+#if PY_MAJOR_VERSION >= 3
+
+PyMODINIT_FUNC PyInit_tarantool_snapshot(void) {
+    PyObject *m;
+
+    SnapshotIterator_Type.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&SnapshotIterator_Type) < 0)  return NULL;
+
+    static struct PyModuleDef moduledef = {
+        PyModuleDef_HEAD_INIT,
+        "tarantool_snapshot",
+        "tarantool 1.5 snapshot",
+        -1,
+        TarantoolSnapshot_Module_Methods,
+    };
+
+    m = PyModule_Create(&moduledef);
+    if (!m) {
+        return NULL;
+    }
+
+    Py_INCREF(&SnapshotIterator_Type);
+    PyModule_AddObject(m, "iter", (PyObject *)&SnapshotIterator_Type);
+
+    SnapshotError = PyErr_NewException("tarantool_snapshot.SnapshotError", NULL, NULL);
+    Py_INCREF(SnapshotError);
+    PyModule_AddObject(m, "SnapshotError", SnapshotError);
+
+    return m;
+}
+
+#else
+
+// backward compatibility
 
 PyMODINIT_FUNC inittarantool_snapshot(void) {
     PyObject *m;
@@ -214,12 +252,7 @@ PyMODINIT_FUNC inittarantool_snapshot(void) {
 
     SnapshotError = PyErr_NewException("tarantool_snapshot.SnapshotError", NULL, NULL);
     Py_INCREF(SnapshotError);
-    PyModule_AddObject(m, "SnapshotError", SnapshotError); 
+    PyModule_AddObject(m, "SnapshotError", SnapshotError);
 }
 
-int main(int argc, char **argv) {
-    Py_SetProgramName(argv[0]);
-    Py_Initialize();
-    inittarantool_snapshot();
-    return 0;
-}
+#endif
